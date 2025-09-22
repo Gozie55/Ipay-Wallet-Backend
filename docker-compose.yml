@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:15
+    container_name: ipayz_postgres-db
+    environment:
+      POSTGRES_USER: ${DB_USERNAME}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      POSTGRES_DB: ${DB_NAME}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USERNAME} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  ipayz-backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: ipayz-image
+    container_name: ipayz-backend
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    
+
+    
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - uploads:/app/uploads
+      - ~/.m2:/root/.m2
+      - ./src:/app/src:cached
+
+volumes:
+  pgdata:
+  uploads:
