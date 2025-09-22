@@ -25,33 +25,35 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
         http
-            // ✅ Disable CSRF (we’re using stateless JWT, not sessions)
-            .csrf(csrf -> csrf.disable())
-            // ✅ Enable CORS (uses CorsConfig)
-            .cors(cors -> {})
-            // ✅ Stateless API
-            .sessionManagement(session -> session
+                // ✅ Disable CSRF (we’re using stateless JWT, not sessions)
+                .csrf(csrf -> csrf.disable())
+                // ✅ Enable CORS (uses CorsConfig)
+                .cors(cors -> {
+                })
+                // ✅ Stateless API
+                .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
-            )
-            .authorizeHttpRequests(auth -> auth
+                )
+                .authorizeHttpRequests(auth -> auth
                 // ✅ Public auth endpoints
                 .requestMatchers(
-                    "/api/auth/register/initiate",
-                    "/api/auth/register/verify",
-                    "/api/auth/register/google",
-                    "/api/auth/login/initiate",
-                    "/api/auth/login/verify",
-                    "/api/auth/register/**",
-                    "/api/webhook/monnify/**",
-                    "/uploads/**"
+                        "/",
+                        "/api/auth/register/initiate",
+                        "/api/auth/register/verify",
+                        "/api/auth/register/google",
+                        "/api/auth/login/initiate",
+                        "/api/auth/login/verify",
+                        "/api/auth/register/**",
+                        "/api/webhook/monnify/**",
+                        "/uploads/**"
                 ).permitAll()
                 // ✅ Allow preflight
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                 // ✅ Everything else requires JWT
                 .anyRequest().authenticated()
-            )
-            // ✅ Add JWT filter
-            .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
+                )
+                // ✅ Add JWT filter
+                .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
