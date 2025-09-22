@@ -1,19 +1,34 @@
 package com.ipayz.ipayz_backend.service;
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.InternetAddress;
-import jakarta.mail.internet.MimeMessage;
+import java.time.Duration;
+import java.util.*;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
+import org.springframework.http.MediaType;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
 
 @Service
 public class EmailService {
 
-    private final JavaMailSender mailSender;
+    private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
 
+    
+    // -----------------------------
+    // Brevo configuration
+    // -----------------------------
+    @Value("${brevo.api.base-url}")
+    private String brevoBaseUrl; // Option A: field injection
+
+    @Value("${brevo.api.key}")
+    private String brevoApiKey;
+
+    // -----------------------------
+    // Email sender info
+    // -----------------------------
     @Value("${app.mail.from}")
     private String from;
 
@@ -26,8 +41,19 @@ public class EmailService {
     @Value("${app.mail.admin}")
     private String adminMail;
 
-    public EmailService(JavaMailSender mailSender) {
-        this.mailSender = mailSender;
+    // -----------------------------
+    // WebClient instance
+    // -----------------------------
+    private final WebClient webClient;
+
+    // -----------------------------
+    // Constructor
+    // -----------------------------
+    public EmailService(@Value("${brevo.api.base-url:https://api.brevo.com}") String brevoBaseUrl) {
+        this.webClient = WebClient.builder()
+                .baseUrl(brevoBaseUrl)
+                .defaultHeader("Accept", MediaType.APPLICATION_JSON_VALUE)
+                .build();
     }
 
     // =========================
@@ -41,7 +67,7 @@ public class EmailService {
     }
 
     // =========================
-    // Plain Text Email
+    // Generic email send
     // =========================
     @Async
     public void sendPlainTextEmail(String toEmail, String subject, String htmlBody) {
@@ -49,36 +75,67 @@ public class EmailService {
     }
 
     // =========================
-    // Core Email Sending
+    // Core: send via Brevo REST API
     // =========================
     @Async
     public void sendEmail(String to, String subject, String htmlBody) {
+        if (brevoApiKey == null || brevoApiKey.isBlank()) {
+            logger.error("Brevo API key not configured; email not sent to {}", to);
+            return;
+        }
+
+        if (from == null || from.isBlank()) {
+            logger.error("Sender address (app.mail.from) is not configured; email not sent to {}", to);
+            return;
+        }
+
+        Map<String, Object> payload = new HashMap<>();
+
+        Map<String, String> sender = new HashMap<>();
+        sender.put("email", from);
+        if (fromName != null && !fromName.isBlank()) {
+            sender.put("name", fromName);
+        }
+        payload.put("sender", sender);
+
+        Map<String, String> recipient = new HashMap<>();
+        recipient.put("email", to);
+        payload.put("to", Collections.singletonList(recipient));
+
+        payload.put("subject", subject);
+        payload.put("htmlContent", htmlBody);
+
+        if (replyTo != null && !replyTo.isBlank()) {
+            Map<String, String> replyToObj = new HashMap<>();
+            replyToObj.put("email", replyTo);
+            payload.put("replyTo", replyToObj);
+        }
+
         try {
-            MimeMessage message = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(message, "UTF-8");
+            String response = webClient.post()
+                    .uri("/v3/smtp/email") // relative to baseUrl
+                    .header("api-key", brevoApiKey)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .bodyValue(payload)
+                    .retrieve()
+                    .onStatus(
+                            status -> !status.is2xxSuccessful(),
+                            clientResp -> clientResp.bodyToMono(String.class)
+                                    .map(body -> new RuntimeException(
+                                            "Brevo API error " + clientResp.statusCode() + " - " + body))
+                    )
+                    .bodyToMono(String.class)
+                    .block(Duration.ofSeconds(20));
 
-            String sender = (fromName != null && !fromName.isBlank()) 
-                    ? String.format("%s <%s>", fromName, from) 
-                    : from;
+            logger.info("Sent email to {} via Brevo; response: {}", to, response);
 
-            helper.setFrom(new InternetAddress(sender));
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(htmlBody, true);
-
-            if (replyTo != null && !replyTo.isBlank()) {
-                helper.setReplyTo(replyTo);
-            }
-
-            mailSender.send(message);
-
-        } catch (MessagingException e) {
-            throw new RuntimeException("Failed to send email via Gmail SMTP: " + e.getMessage(), e);
+        } catch (Exception ex) {
+            logger.error("Failed to send email via Brevo to {}: {}", to, ex.getMessage(), ex);
         }
     }
 
     // =========================
-    // OTP Email Template
+    // OTP template
     // =========================
     private String buildOtpHtmlTemplate(String otpCode, String purpose) {
         return "<html>"
