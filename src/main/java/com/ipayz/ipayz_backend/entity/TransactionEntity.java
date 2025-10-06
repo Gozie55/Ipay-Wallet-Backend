@@ -8,7 +8,6 @@ import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 import java.math.BigDecimal;
 import java.time.Instant;
 
-
 @Entity
 @Table(name = "transactions")
 @EntityListeners(AuditingEntityListener.class)
@@ -47,8 +46,15 @@ public class TransactionEntity {
 
     @NotNull
     @Size(max = 100)
-    @Column(unique = true, nullable = false, length = 100)
+    @Column(nullable = false, length = 100)
     private String reference;
+
+    // ✅ NEW FIELD: shared ID for linking related transactions (e.g. debit & credit)
+    @Column(name = "transfer_group_id", length = 100)
+    private String transferGroupId;
+
+    @Column(name = "external_reference")
+    private String externalReference;
 
     @Column(nullable = false)
     private Instant timestamp = Instant.now();
@@ -56,7 +62,7 @@ public class TransactionEntity {
     // Store metadata as String
     @Column(columnDefinition = "TEXT") // optional, ensures large text support
     private String metadata;
-    
+
     private String externalResponse;
 
     public TransactionEntity() {
@@ -155,5 +161,21 @@ public class TransactionEntity {
 
     public void markPending() {
         this.status = TransactionStatus.PENDING;
+    }
+
+    public String getExternalReference() {
+        return externalReference;
+    }
+
+    public void setExternalReference(String externalReference) {
+        this.externalReference = externalReference;
+    }
+
+    public String getTransferGroupId() {
+        return transferGroupId;
+    }
+
+    public void setTransferGroupId(String transferGroupId) {
+        this.transferGroupId = transferGroupId;
     }
 }

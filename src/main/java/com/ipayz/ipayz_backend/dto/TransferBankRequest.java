@@ -12,6 +12,8 @@ public class TransferBankRequest {
 
     @NotBlank
     private String accountNumber;
+    
+    private String bankName;
 
     @Positive(message = "Amount must be greater than 0")
     private BigDecimal amount;
@@ -50,5 +52,13 @@ public class TransferBankRequest {
 
     public void setAmount(BigDecimal amount) {
         this.amount = amount;
+    }
+
+    public String getBankName() {
+        return bankName;
+    }
+
+    public void setBankName(String bankName) {
+        this.bankName = bankName;
     }
 }

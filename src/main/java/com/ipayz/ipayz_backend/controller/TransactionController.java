@@ -21,33 +21,93 @@ public class TransactionController {
         this.transactionService = transactionService;
     }
 
-    // Wallet -> Wallet
+    // === Wallet → Wallet Transfer ===
     @PostMapping("/transfer/wallet")
     public ResponseEntity<?> transferWallet(@AuthenticationPrincipal String email,
-                                            @RequestBody TransferWalletRequest request) {
-        Map<String, Object> result = transactionService.transferBetweenWallets(email, request);
-        return ResponseEntity.ok(Map.of("success", true, "data", result));
+            @RequestBody TransferWalletRequest request) {
+        try {
+            Map<String, Object> result = transactionService.transferBetweenWallets(email, request);
+            return ResponseEntity.ok(Map.of(
+                    "status", "success",
+                    "data", result
+            ));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "status", "error",
+                    "message", ex.getMessage()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "error",
+                    "message", "An unexpected error occurred while processing wallet transfer."
+            ));
+        }
     }
 
-    // Get banks
-    @GetMapping("/banks")
-    public ResponseEntity<?> getBanks() {
-        return ResponseEntity.ok(Map.of("success", true, "data", transactionService.getBanks()));
-    }
-
-    // Wallet -> Bank (withdraw)
+    // === Wallet → Bank Transfer (Withdraw) ===
     @PostMapping("/transfer/bank")
     public ResponseEntity<?> transferBank(@AuthenticationPrincipal String email,
-                                          @RequestBody TransferBankRequest request) {
-        Map<String, Object> result = transactionService.transferToBank(email, request);
-        return ResponseEntity.ok(Map.of("success", true, "data", result));
+            @RequestBody TransferBankRequest request) {
+        try {
+            Map<String, Object> result = transactionService.transferToBank(email, request);
+            return ResponseEntity.ok(Map.of(
+                    "status", "success",
+                    "data", result
+            ));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "status", "error",
+                    "message", ex.getMessage()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "error",
+                    "message", "An unexpected error occurred while processing bank transfer."
+            ));
+        }
     }
 
-    // Transaction history
+    // === Bank List ===
+    @GetMapping("/banks")
+    public ResponseEntity<?> getBanks() {
+        try {
+            return ResponseEntity.ok(Map.of(
+                    "status", "success",
+                    "data", transactionService.getBanks()
+            ));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "status", "error",
+                    "message", ex.getMessage()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "error",
+                    "message", "Unable to fetch banks list at this time."
+            ));
+        }
+    }
+
+    // === Transaction History ===
     @GetMapping("/history")
     public ResponseEntity<?> history(@AuthenticationPrincipal String email,
-                                     @RequestParam(defaultValue = "0") int page,
-                                     @RequestParam(defaultValue = "10") int size) {
-        return ResponseEntity.ok(Map.of("success", true, "data", transactionService.getTransactionHistory(email, page, size)));
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size) {
+        try {
+            return ResponseEntity.ok(Map.of(
+                    "status", "success",
+                    "data", transactionService.getTransactionHistory(email, page, size)
+            ));
+        } catch (RuntimeException ex) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "status", "error",
+                    "message", ex.getMessage()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body(Map.of(
+                    "status", "error",
+                    "message", "An unexpected error occurred while fetching transaction history."
+            ));
+        }
     }
 }

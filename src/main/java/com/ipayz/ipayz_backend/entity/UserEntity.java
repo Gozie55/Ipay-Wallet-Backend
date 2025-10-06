@@ -153,4 +153,15 @@ public class UserEntity {
     public void setWallet(WalletEntity wallet) {
         this.wallet = wallet;
     }
+
+    @Transient
+    public String getFullName() {
+        if (kycProfile != null) {
+            String first = kycProfile.getFirstName() != null ? kycProfile.getFirstName() : "";
+            String last = kycProfile.getLastName() != null ? kycProfile.getLastName() : "";
+            return (first + " " + last).trim();
+        }
+        return email; // fallback if KYC is missing
+    }
+
 }

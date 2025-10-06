@@ -24,15 +24,18 @@ public class WalletService {
     private final WalletRepository walletRepository;
     private final TransactionRepository transactionRepository;
     private final MonnifyService monnifyService;
+    private final EmailService emailService;
 
     public WalletService(UserRepository userRepository,
             WalletRepository walletRepository,
             TransactionRepository transactionRepository,
-            MonnifyService monnifyService) {
+            MonnifyService monnifyService,
+            EmailService emailService) {
         this.userRepository = userRepository;
         this.walletRepository = walletRepository;
         this.transactionRepository = transactionRepository;
         this.monnifyService = monnifyService;
+        this.emailService = emailService;
     }
 
     /**
@@ -75,15 +78,19 @@ public class WalletService {
                 )
         );
 
-        // Create pending transaction
+        // Extract Monnify transaction reference (if present)
+        String transactionReference = (String) monnifyResp.get("transactionReference");
+
+        // ✅ Create pending transaction and save both refs
         TransactionEntity txn = new TransactionEntity();
         txn.setWallet(wallet);
         txn.setType(TransactionEntity.TransactionType.FUND);
         txn.setAmount(request.getAmount());
         txn.setStatus(TransactionEntity.TransactionStatus.PENDING);
-        txn.setReference(paymentReference);
+        txn.setReference(paymentReference); // your internal reference
+        txn.setExternalReference(transactionReference); // Monnify reference
         txn.setTimestamp(Instant.now());
-        txn.setMetadata(monnifyResp.toString()); // serialize Map to String
+        txn.setMetadata(monnifyResp.toString());
 
         // Save transaction
         transactionRepository.save(txn);

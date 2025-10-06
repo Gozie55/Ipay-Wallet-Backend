@@ -22,18 +22,21 @@ public class TransactionService {
     private final TransactionRepository transactionRepository;
     private final MonnifyService monnifyService;
     private final UserRepository userRepository;
-    private final PasswordEncoder passwordEncoder; // <-- added
+    private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
 
     public TransactionService(WalletRepository walletRepository,
-                              TransactionRepository transactionRepository,
-                              MonnifyService monnifyService,
-                              UserRepository userRepository,
-                              PasswordEncoder passwordEncoder) {
+            TransactionRepository transactionRepository,
+            MonnifyService monnifyService,
+            UserRepository userRepository,
+            PasswordEncoder passwordEncoder,
+            EmailService emailService) {
         this.walletRepository = walletRepository;
         this.transactionRepository = transactionRepository;
         this.monnifyService = monnifyService;
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
     }
 
     /**
@@ -51,8 +54,8 @@ public class TransactionService {
                 .orElseThrow(() -> new RuntimeException("Recipient wallet not found"));
 
         // ✅ verify PIN using PasswordEncoder
-        if (senderUser.getWalletPinHash() == null ||
-                !passwordEncoder.matches(request.getWalletPin(), senderUser.getWalletPinHash())) {
+        if (senderUser.getWalletPinHash() == null
+                || !passwordEncoder.matches(request.getWalletPin(), senderUser.getWalletPinHash())) {
             throw new RuntimeException("Invalid wallet PIN");
         }
 
@@ -66,34 +69,60 @@ public class TransactionService {
             throw new RuntimeException("Insufficient funds");
         }
 
-        // debit sender
+        // Debit sender
         lockedSender.setBalance(lockedSender.getBalance().subtract(request.getAmount()));
         lockedSender.setUpdatedAt(Instant.now());
         walletRepository.save(lockedSender);
 
-        // credit recipient
+        // Credit recipient
         lockedRecipient.setBalance(lockedRecipient.getBalance().add(request.getAmount()));
         lockedRecipient.setUpdatedAt(Instant.now());
         walletRepository.save(lockedRecipient);
 
-        String reference = "WALLET-" + UUID.randomUUID();
+        // ✅ Use a shared transfer group for linking both transactions
+        String transferGroupId = UUID.randomUUID().toString();
+
+        // ✅ Create unique references for both sides
+        String debitRef = "WALLET-" + transferGroupId + "-DEBIT";
+        String creditRef = "WALLET-" + transferGroupId + "-CREDIT";
+
+        if (transactionRepository.existsByReference(debitRef) || transactionRepository.existsByReference(creditRef)) {
+            throw new RuntimeException("Duplicate transaction reference detected");
+        }
+
         TransactionEntity debitTxn = new TransactionEntity(
                 lockedSender, request.getAmount().negate(),
                 TransactionEntity.TransactionType.WALLET_TRANSFER,
-                TransactionEntity.TransactionStatus.SUCCESS, reference);
+                TransactionEntity.TransactionStatus.SUCCESS, debitRef);
+        debitTxn.setMetadata("Transfer to wallet " + recipient.getAccountNumber());
 
         TransactionEntity creditTxn = new TransactionEntity(
                 lockedRecipient, request.getAmount(),
                 TransactionEntity.TransactionType.WALLET_TRANSFER,
-                TransactionEntity.TransactionStatus.SUCCESS, reference);
+                TransactionEntity.TransactionStatus.SUCCESS, creditRef);
+        creditTxn.setMetadata("Received from wallet " + sender.getAccountNumber());
 
         transactionRepository.save(debitTxn);
         transactionRepository.save(creditTxn);
 
+        // ✅ Send transaction emails to both sender and recipient
+        emailService.sendWalletTransferEmail(
+                senderUser.getEmail(),
+                recipient.getUser().getEmail(),
+                request.getAmount().toPlainString(),
+                transferGroupId,
+                senderUser.getFullName(), // sender name
+                sender.getAccountNumber(), // sender wallet number
+                recipient.getUser().getFullName(), // recipient name
+                recipient.getAccountNumber() // recipient wallet number
+        );
+
         return Map.of(
                 "status", "SUCCESS",
-                "reference", reference,
-                "senderNewBalance", lockedSender.getBalance()
+                "transferGroupId", transferGroupId,
+                "senderNewBalance", lockedSender.getBalance(),
+                "senderReference", debitRef,
+                "recipientReference", creditRef
         );
     }
 
@@ -109,8 +138,8 @@ public class TransactionService {
                 .orElseThrow(() -> new RuntimeException("Sender wallet not found"));
 
         // ✅ verify PIN using PasswordEncoder
-        if (senderUser.getWalletPinHash() == null ||
-                !passwordEncoder.matches(request.getWalletPin(), senderUser.getWalletPinHash())) {
+        if (senderUser.getWalletPinHash() == null
+                || !passwordEncoder.matches(request.getWalletPin(), senderUser.getWalletPinHash())) {
             throw new RuntimeException("Invalid wallet PIN");
         }
 
@@ -146,6 +175,15 @@ public class TransactionService {
             txn.setStatus(TransactionEntity.TransactionStatus.PENDING);
         }
         transactionRepository.save(txn);
+
+        // ✅ Send transaction email to sender
+        emailService.sendBankTransferEmail(
+                senderUser.getEmail(),
+                request.getAmount().toPlainString(),
+                reference,
+                request.getBankName(),
+                request.getAccountNumber()
+        );
 
         return Map.of(
                 "status", txn.getStatus().name(),

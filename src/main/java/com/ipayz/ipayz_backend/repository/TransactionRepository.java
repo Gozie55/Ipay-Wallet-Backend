@@ -12,4 +12,8 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
 
     List<TransactionEntity> findByWallet_User_Id(Long userId);
 
+    Optional<TransactionEntity> findByExternalReference(String externalReference);
+    
+    boolean existsByReference(String reference);
+
 }

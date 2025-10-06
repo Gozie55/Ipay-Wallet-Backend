@@ -28,11 +28,22 @@ public class AuthService {
 
     }
 
-    // === Registration with OTP ===
-    public void initiateRegistration(RegistrationInitiateRequest request) {
-        // OtpService will generate + send email
-        otpService.createOtp(request.getEmail(), "registration");
+   // === Registration with OTP ===
+public void initiateRegistration(RegistrationInitiateRequest request) {
+    Optional<UserEntity> existingUserOpt = userRepository.findByEmail(request.getEmail());
+
+    if (existingUserOpt.isPresent()) {
+        UserEntity existingUser = existingUserOpt.get();
+
+        // ✅ Block registration if user already completed KYC & set PIN
+        if (existingUser.isKycCompleted() && existingUser.getWalletPinHash() != null) {
+            throw new RuntimeException("This user already exists. Please log in instead.");
+        }
     }
+
+    // Otherwise, proceed to send OTP
+    otpService.createOtp(request.getEmail(), "registration");
+}
 
     public RegistrationVerifyResponse verifyRegistrationOtp(RegistrationVerifyRequest request) {
         boolean valid = otpService.validateOtp(request.getEmail(), request.getOtp(), "registration");
