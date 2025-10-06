@@ -71,7 +71,7 @@ public class MonnifyWebhookController {
             }
 
             Map<String, Object> payload = objectMapper.readValue(rawBody, Map.class);
-            log.info("Valid Monnify webhook received: {}", payload);
+            log.info("✅ Valid Monnify webhook received: {}", payload);
 
             String transactionReference = (String) payload.get("transactionReference");
             String paymentReference = (String) payload.get("paymentReference");
@@ -89,12 +89,20 @@ public class MonnifyWebhookController {
             String finalStatus = paymentStatus.toUpperCase();
             String reference = paymentReference != null ? paymentReference : transactionReference;
 
+            // ✅ Look up transaction first
             Optional<TransactionEntity> optTxn
                     = transactionRepository.findByExternalReference(transactionReference)
                             .or(() -> transactionRepository.findByReference(paymentReference));
 
             if (optTxn.isPresent()) {
                 TransactionEntity txn = optTxn.get();
+
+                // 🛑 Idempotency check
+                if (txn.getStatus() == TransactionEntity.TransactionStatus.SUCCESS) {
+                    log.info("⏩ Transaction {} already processed as SUCCESS — skipping duplicate webhook.", txn.getReference());
+                    return ResponseEntity.ok(Map.of("status", "already_processed"));
+                }
+
                 txn.setStatus(TransactionEntity.TransactionStatus.valueOf(finalStatus));
                 txn.setExternalResponse(payload.toString());
                 transactionRepository.save(txn);
@@ -109,7 +117,7 @@ public class MonnifyWebhookController {
 
                     UserEntity user = wallet.getUser();
 
-                    // ✅ Send email
+                    // ✅ Send email once per successful credit
                     emailService.sendWalletFundingReceipt(
                             user.getEmail(),
                             user.getFullName(),
@@ -117,14 +125,21 @@ public class MonnifyWebhookController {
                             txn.getAmount().toPlainString(),
                             txn.getReference()
                     );
-
                 }
 
             } else {
-                // ✅ Fallback
+                // ✅ Fallback: create transaction only if not exists
                 if (customerEmail != null && amountNumber != null) {
                     userRepository.findByEmail(customerEmail).ifPresent(user -> {
                         walletRepository.findFirstByUserId(user.getId()).ifPresent(wallet -> {
+
+                            // 🛑 Skip if this reference already exists
+                            boolean exists = transactionRepository.existsByReference(reference);
+                            if (exists) {
+                                log.info("⏩ Skipping duplicate fallback transaction: {}", reference);
+                                return;
+                            }
+
                             TransactionEntity txn = new TransactionEntity();
                             txn.setWallet(wallet);
                             txn.setType(TransactionEntity.TransactionType.FUND);
@@ -140,7 +155,6 @@ public class MonnifyWebhookController {
                                 wallet.setUpdatedAt(Instant.now());
                                 walletRepository.save(wallet);
 
-                                // ✅ Send email after credit (fallback)
                                 emailService.sendWalletFundingReceipt(
                                         user.getEmail(),
                                         user.getFullName(),
@@ -149,7 +163,6 @@ public class MonnifyWebhookController {
                                         txn.getReference()
                                 );
                             }
-
                         });
                     });
                 }
