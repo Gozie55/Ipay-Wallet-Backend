@@ -134,7 +134,8 @@ public class MonnifyWebhookController {
                         walletRepository.findFirstByUserId(user.getId()).ifPresent(wallet -> {
 
                             // 🛑 Skip if this reference already exists
-                            boolean exists = transactionRepository.existsByReference(reference);
+                            boolean exists = transactionRepository.existsByReference(reference)
+                                    || (transactionReference != null && transactionRepository.existsByExternalReference(transactionReference));
                             if (exists) {
                                 log.info("⏩ Skipping duplicate fallback transaction: {}", reference);
                                 return;

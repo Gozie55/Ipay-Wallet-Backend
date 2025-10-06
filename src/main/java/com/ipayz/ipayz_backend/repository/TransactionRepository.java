@@ -15,5 +15,8 @@ public interface TransactionRepository extends JpaRepository<TransactionEntity, 
     Optional<TransactionEntity> findByExternalReference(String externalReference);
     
     boolean existsByReference(String reference);
+    
+    boolean existsByExternalReference(String externalReference);
+
 
 }

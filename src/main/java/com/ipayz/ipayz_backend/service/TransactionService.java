@@ -161,6 +161,12 @@ public class TransactionService {
                 TransactionEntity.TransactionType.BANK_TRANSFER,
                 TransactionEntity.TransactionStatus.PENDING, reference);
         txn.setTimestamp(Instant.now());
+
+        // 🛑 Skip if this transfer reference already exists
+        if (transactionRepository.existsByReference(reference)) {
+            throw new RuntimeException("Duplicate bank transfer request detected");
+        }
+
         transactionRepository.save(txn);
 
         // call Monnify

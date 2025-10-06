@@ -81,6 +81,17 @@ public class WalletService {
         // Extract Monnify transaction reference (if present)
         String transactionReference = (String) monnifyResp.get("transactionReference");
 
+        // 🛑 Skip if transaction already exists
+        if (transactionRepository.existsByReference(paymentReference)
+                || (transactionReference != null && transactionRepository.existsByExternalReference(transactionReference))) {
+//            log.info("⏩ Skipping duplicate card funding transaction: {}", paymentReference);
+            Map<String, Object> result = new HashMap<>();
+            result.put("status", "already_processed");
+            result.put("reference", paymentReference);
+            result.put("monnify", monnifyResp);
+            return result;
+        }
+
         // ✅ Create pending transaction and save both refs
         TransactionEntity txn = new TransactionEntity();
         txn.setWallet(wallet);
